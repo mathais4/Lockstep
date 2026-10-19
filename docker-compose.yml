@@ -1,0 +1,40 @@
+# docker compose up --build --scale worker=3
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: lockstep
+      POSTGRES_PASSWORD: lockstep
+      POSTGRES_DB: lockstep
+    ports: ["5432:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lockstep"]
+      interval: 2s
+      retries: 30
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+
+  api:
+    build: .
+    command: ["api"]
+    environment: &env
+      DATABASE_URL: jdbc:postgresql://db:5432/lockstep
+      DB_USER: lockstep
+      DB_PASSWORD: lockstep
+    ports: ["8080:8080"]
+    depends_on:
+      db: { condition: service_healthy }
+
+  worker:
+    build: .
+    command: ["worker"]
+    environment:
+      <<: *env
+      WORKER_THREADS: "4"
+      LEASE_SECONDS: "30"
+    # docker stop sends SIGTERM: workers finish or hand back jobs within the grace period.
+    stop_grace_period: 30s
+    depends_on:
+      db: { condition: service_healthy }
+
+volumes:
+  pgdata:
